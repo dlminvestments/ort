@@ -38,7 +38,7 @@ data class TextLocation(
     /**
      * The line the text is ending at.
      */
-    val endLine: Int
+    val endLine: Int = startLine
 ) : Comparable<TextLocation> {
     companion object {
         const val UNKNOWN_LINE = -1
