@@ -49,76 +49,10 @@ class Licensee(name: String, config: ScannerConfiguration) : LocalScanner(name, 
         val CONFIGURATION_OPTIONS = listOf("--json")
     }
 
-    override val scannerVersion = "9.13.0"
+    override val expectedVersion = "9.13.0"
     override val resultFileExt = "json"
 
     override fun command(workingDir: File?) =
         listOfNotNull(workingDir, if (Os.isWindows) "licensee.bat" else "licensee").joinToString(File.separator)
 
     override fun getVersionArguments() = "version"
-
-    override fun getConfiguration() = CONFIGURATION_OPTIONS.joinToString(" ")
-
-    override fun scanPathInternal(path: File, resultsFile: File): ScanResult {
-        val startTime = Instant.now()
-
-        val process = ProcessCapture(
-            scannerPath.absolutePath,
-            "detect",
-            *CONFIGURATION_OPTIONS.toTypedArray(),
-            path.absolutePath
-        )
-
-        val endTime = Instant.now()
-
-        if (process.stderr.isNotBlank()) {
-            log.debug { process.stderr }
-        }
-
-        with(process) {
-            if (isSuccess) {
-                stdoutFile.copyTo(resultsFile)
-                val result = getRawResult(resultsFile)
-                val summary = generateSummary(startTime, endTime, path, result)
-                return ScanResult(Provenance(), getDetails(), summary, result)
-            } else {
-                throw ScanException(errorMessage)
-            }
-        }
-    }
-
-    override fun getRawResult(resultsFile: File) =
-        if (resultsFile.isFile && resultsFile.length() > 0L) {
-            jsonMapper.readTree(resultsFile)
-        } else {
-            EMPTY_JSON_NODE
-        }
-
-    private fun generateSummary(startTime: Instant, endTime: Instant, scanPath: File, result: JsonNode): ScanSummary {
-        val matchedFiles = result["matched_files"]
-        val licenseFindings = sortedSetOf<LicenseFinding>()
-
-        matchedFiles.mapTo(licenseFindings) {
-            val filePath = File(it["filename"].textValue())
-            LicenseFinding(
-                license = getSpdxLicenseIdString(it["matched_license"].textValue()),
-                location = TextLocation(
-                    // The path is already relative.
-                    filePath.path,
-                    TextLocation.UNKNOWN_LINE,
-                    TextLocation.UNKNOWN_LINE
-                )
-            )
-        }
-
-        return ScanSummary(
-            startTime = startTime,
-            endTime = endTime,
-            fileCount = matchedFiles.count(),
-            packageVerificationCode = calculatePackageVerificationCode(scanPath),
-            licenseFindings = licenseFindings,
-            copyrightFindings = sortedSetOf(),
-            issues = mutableListOf()
-        )
-    }
-}

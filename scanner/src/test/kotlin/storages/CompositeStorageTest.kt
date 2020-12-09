@@ -19,7 +19,7 @@
 
 package org.ossreviewtoolkit.scanner.storages
 
-import com.fasterxml.jackson.databind.node.TextNode
+import com.vdurmont.semver4j.Semver
 
 import io.kotest.assertions.fail
 import io.kotest.core.spec.style.WordSpec
@@ -45,6 +45,7 @@ import org.ossreviewtoolkit.model.Success
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
+import org.ossreviewtoolkit.scanner.ScannerCriteria
 
 private val ID = Identifier(type = "Gradle", namespace = "testNS", name = "test", version = "1.0.9")
 
@@ -54,7 +55,10 @@ private val PACKAGE = Package(
     declaredLicenses = sortedSetOf()
 )
 
-private val DETAILS = ScannerDetails("testScanner", "0.1", "testConfig")
+private val CRITERIA = ScannerCriteria(
+    "testScanner", Semver("0.0.1"), Semver("2.0.0"),
+    ScannerCriteria.exactConfigMatcher("testConfig")
+)
 
 /**
  * Create a mock [ScanResultsStorage] that reports the specified [name].
@@ -83,7 +87,7 @@ private fun createScanResult(resultCount: Int): ScanResult {
     )
     val provenance = Provenance(sourceArtifact = RemoteArtifact.EMPTY)
     val scanner = ScannerDetails("scanner$resultCount", "v$resultCount", "testConfig")
-    return ScanResult(provenance, scanner, summary, TextNode("some result"))
+    return ScanResult(provenance, scanner, summary)
 }
 
 class CompositeStorageTest : WordSpec({
@@ -146,7 +150,7 @@ class CompositeStorageTest : WordSpec({
         "return an empty result if no readers are configured when asked for a package" {
             val storage = CompositeStorage(emptyList(), listOf(mockk()))
 
-            when (val result = storage.read(PACKAGE, DETAILS)) {
+            when (val result = storage.read(PACKAGE, CRITERIA)) {
                 is Success -> {
                     result.result.id shouldBe ID
                     result.result.results.isEmpty() shouldBe true
@@ -162,15 +166,15 @@ class CompositeStorageTest : WordSpec({
             val readerEmptyContainer = storageMock("r2")
             val readerResult = storageMock("r3")
             val readerUnused = storageMock("r4")
-            every { readerErr.read(PACKAGE, DETAILS) } returns Failure("an error")
-            every { readerEmptyContainer.read(PACKAGE, DETAILS) } returns Success(ScanResultContainer(ID, emptyList()))
-            every { readerResult.read(PACKAGE, DETAILS) } returns result
+            every { readerErr.read(PACKAGE, CRITERIA) } returns Failure("an error")
+            every { readerEmptyContainer.read(PACKAGE, CRITERIA) } returns Success(ScanResultContainer(ID, emptyList()))
+            every { readerResult.read(PACKAGE, CRITERIA) } returns result
 
             val storage = CompositeStorage(
                 listOf(readerErr, readerEmptyContainer, readerResult, readerUnused),
                 emptyList()
             )
-            val readResult = storage.read(PACKAGE, DETAILS)
+            val readResult = storage.read(PACKAGE, CRITERIA)
 
             readResult shouldBe result
         }

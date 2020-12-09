@@ -22,6 +22,8 @@ package org.ossreviewtoolkit.scanner.scanners
 import java.io.File
 import java.time.Instant
 
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.createTempFile
 import kotlin.math.max
 
 import org.apache.logging.log4j.Level
@@ -108,7 +110,7 @@ class ScanCode(
         }
     }
 
-    override val scannerVersion = "3.2.1-rc2"
+    override val expectedVersion = "3.2.1-rc2"
     override val resultFileExt = "json"
 
     private val scanCodeConfiguration = config.options?.get("ScanCode").orEmpty()
@@ -143,7 +145,6 @@ class ScanCode(
         val prefix = "ScanCode version "
         return output.lineSequence().first { it.startsWith(prefix) }.substring(prefix.length)
     }
-
     override fun getConfiguration() =
         configurationOptions.toMutableList().run {
             add(OUTPUT_FORMAT_OPTION)
@@ -180,7 +181,7 @@ class ScanCode(
 
         with(process) {
             if (isSuccess || hasOnlyMemoryErrors || hasOnlyTimeoutErrors) {
-                return ScanResult(Provenance(), getDetails(), summary.copy(issues = issues), result)
+                return ScanResult(Provenance(), getDetails(), summary.copy(issues = issues))
             } else {
                 throw ScanException(errorMessage)
             }
@@ -199,6 +200,5 @@ class ScanCode(
             }
         }
 
-    override fun getRawResult(resultsFile: File) =
-        parseScanCodeResult(resultsFile)
+    override fun getRawResult(resultsFile: File) = parseScanCodeResult(resultsFile)
 }

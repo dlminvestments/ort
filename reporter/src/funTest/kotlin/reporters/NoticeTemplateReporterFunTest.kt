@@ -24,6 +24,8 @@ import io.kotest.matchers.shouldBe
 
 import java.io.File
 
+import kotlin.io.path.createTempDirectory
+
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
 import org.ossreviewtoolkit.model.config.FileArchiverConfiguration
@@ -31,8 +33,12 @@ import org.ossreviewtoolkit.model.config.FileStorageConfiguration
 import org.ossreviewtoolkit.model.config.LocalFileStorageConfiguration
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
+import org.ossreviewtoolkit.model.licenses.LicenseCategorization
+import org.ossreviewtoolkit.model.licenses.LicenseCategory
+import org.ossreviewtoolkit.model.licenses.LicenseClassifications
 import org.ossreviewtoolkit.reporter.ORT_RESULT
 import org.ossreviewtoolkit.reporter.ReporterInput
+import org.ossreviewtoolkit.spdx.SpdxSingleLicenseExpression
 import org.ossreviewtoolkit.utils.LicenseFilenamePatterns.LICENSE_FILENAMES
 import org.ossreviewtoolkit.utils.ORT_NAME
 
@@ -91,10 +97,28 @@ private fun generateReport(
     val input = ReporterInput(
         ortResult,
         config,
-        copyrightGarbage = copyrightGarbage
+        copyrightGarbage = copyrightGarbage,
+        licenseClassifications = createLicenseClassifications()
     )
 
-    val outputDir = createTempDir(ORT_NAME, NoticeTemplateReporterFunTest::class.simpleName).apply { deleteOnExit() }
+    val outputDir = createTempDirectory("$ORT_NAME-${NoticeTemplateReporterFunTest::class.simpleName}").toFile().apply {
+        deleteOnExit()
+    }
 
     return NoticeTemplateReporter().generateReport(input, outputDir, options).single().readText()
+}
+
+private fun createLicenseClassifications(): LicenseClassifications {
+    val includeNoticeCategory = LicenseCategory("include-in-notice-file")
+    val includeSourceCategory = LicenseCategory("include-source-code-offer-in-notice-file")
+    val mitLicense = LicenseCategorization(
+        SpdxSingleLicenseExpression.parse("MIT"), sortedSetOf(includeNoticeCategory.name)
+    )
+    val bsdLicense = LicenseCategorization(
+        SpdxSingleLicenseExpression.parse("BSD-3-Clause"), sortedSetOf(includeSourceCategory.name)
+    )
+    return LicenseClassifications(
+        categories = listOf(includeNoticeCategory, includeSourceCategory),
+        categorizations = listOf(mitLicense, bsdLicense)
+    )
 }

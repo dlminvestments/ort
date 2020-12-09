@@ -52,7 +52,7 @@ class BoyterLc(name: String, config: ScannerConfiguration) : LocalScanner(name, 
         )
     }
 
-    override val scannerVersion = "1.3.1"
+    override val expectedVersion = "1.3.1"
     override val resultFileExt = "json"
 
     override fun command(workingDir: File?) =
@@ -84,7 +84,7 @@ class BoyterLc(name: String, config: ScannerConfiguration) : LocalScanner(name, 
             if (isSuccess) {
                 val result = getRawResult(resultsFile)
                 val summary = generateSummary(startTime, endTime, path, result)
-                return ScanResult(Provenance(), getDetails(), summary, result)
+                return ScanResult(Provenance(), getDetails(), summary)
             } else {
                 throw ScanException(errorMessage)
             }

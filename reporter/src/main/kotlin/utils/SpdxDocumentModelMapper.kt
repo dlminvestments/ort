@@ -28,10 +28,10 @@ import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
-import org.ossreviewtoolkit.model.utils.PackageConfigurationProvider
-import org.ossreviewtoolkit.model.utils.getDetectedLicensesWithCopyrights
+import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 import org.ossreviewtoolkit.reporter.LicenseTextProvider
 import org.ossreviewtoolkit.spdx.SpdxConstants
+import org.ossreviewtoolkit.spdx.SpdxConstants.REF_PREFIX
 import org.ossreviewtoolkit.spdx.SpdxExpression
 import org.ossreviewtoolkit.spdx.SpdxLicense
 import org.ossreviewtoolkit.spdx.SpdxLicenseException
@@ -57,7 +57,7 @@ object SpdxDocumentModelMapper {
 
     fun map(
         ortResult: OrtResult,
-        packageConfigurationProvider: PackageConfigurationProvider,
+        licenseInfoResolver: LicenseInfoResolver,
         licenseTextProvider: LicenseTextProvider,
         params: SpdxDocumentParams
     ): SpdxDocument {
@@ -83,7 +83,7 @@ object SpdxDocumentModelMapper {
 
             val binaryPackage = SpdxPackage(
                 spdxId = spdxPackageIdGenerator.nextId(pkg.id.name),
-                copyrightText = getSpdxCopyrightText(ortResult, packageConfigurationProvider, pkg.id),
+                copyrightText = getSpdxCopyrightText(licenseInfoResolver, pkg.id),
                 downloadLocation = pkg.binaryArtifact.url.nullOrBlankToSpdxNone(),
                 filesAnalyzed = false,
                 homepage = pkg.homepageUrl.nullOrBlankToSpdxNone(),
@@ -174,7 +174,7 @@ private class SpdxPackageIdGenerator {
 
     fun nextId(name: String): String =
         buildString {
-            append("SPDXRef-Package-${nextPackageIndex++}")
+            append("${REF_PREFIX}Package-${nextPackageIndex++}")
             if (name.isNotBlank()) {
                 append("-$name")
             }
@@ -182,13 +182,10 @@ private class SpdxPackageIdGenerator {
 }
 
 private fun getSpdxCopyrightText(
-    ortResult: OrtResult,
-    packageConfigurationProvider: PackageConfigurationProvider,
+    licenseInfoResolver: LicenseInfoResolver,
     id: Identifier
 ): String {
-    val copyrightStatements = ortResult.getDetectedLicensesWithCopyrights(id, packageConfigurationProvider)
-        .flatMapTo(mutableSetOf()) { it.value }
-        .sorted()
+    val copyrightStatements = licenseInfoResolver.resolveLicenseInfo(id).flatMapTo(sortedSetOf()) { it.getCopyrights() }
 
     return if (copyrightStatements.isNotEmpty()) {
         copyrightStatements.joinToString("\n")

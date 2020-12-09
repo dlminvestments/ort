@@ -25,11 +25,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 import org.ossreviewtoolkit.model.CopyrightFinding
-import org.ossreviewtoolkit.model.CopyrightFindings
 import org.ossreviewtoolkit.model.LicenseFinding
-import org.ossreviewtoolkit.model.LicenseFindings
 import org.ossreviewtoolkit.model.TextLocation
-import org.ossreviewtoolkit.utils.FileMatcher
 
 /**
  * A class for matching copyright findings to license findings. Copyright statements may be matched either to license
@@ -132,10 +129,7 @@ class FindingsMatcher(
      * associated to the root licenses instead. The root licenses are the licenses found in any of the license files
      * defined by [rootLicenseMatcher].
      */
-    fun matchFindings(
-        licenseFindings: Set<LicenseFinding>,
-        copyrightFindings: Set<CopyrightFinding>
-    ): FindingsMatcherResult {
+    fun match(licenseFindings: Set<LicenseFinding>, copyrightFindings: Set<CopyrightFinding>): FindingsMatcherResult {
         val licenseFindingsByPath = licenseFindings.groupBy { it.location.path }
         val copyrightFindingsByPath = copyrightFindings.groupBy { it.location.path }
         val paths = (licenseFindingsByPath.keys + copyrightFindingsByPath.keys).toSet()
@@ -164,7 +158,7 @@ class FindingsMatcher(
      * Associate the given [copyrightFindings] to its corresponding applicable root licenses. If no root license is
      * applicable to a given copyright finding, that copyright finding is not contained in the result.
      */
-    fun matchWithRootLicenses(
+    private fun matchWithRootLicenses(
         licenseFindings: Set<LicenseFinding>,
         copyrightFindings: Set<CopyrightFinding>
     ): Map<LicenseFinding, Set<CopyrightFinding>> {
@@ -182,30 +176,6 @@ class FindingsMatcher(
         }
 
         return result
-    }
-
-    /**
-     * Return an association of the given [copyrightFindings] to [licenseFindings].
-     * Copyright findings are either matched to a license finding located nearby in the same file or to a license
-     * finding pointing to a license file. Whether a file is a license file is determined by the
-     * [FileMatcher] passed to the constructor. All [CopyrightFindings]s which cannot be matched are not present
-     * in the result while all given [licenseFindings] are contained in the result exactly once.
-     */
-    fun match(licenseFindings: Collection<LicenseFinding>, copyrightFindings: Collection<CopyrightFinding>):
-            Set<LicenseFindings> {
-        val result = matchFindings(licenseFindings.toSet(), copyrightFindings.toSet())
-
-        return result.matchedFindings.entries.groupBy { it.key.license }
-            .flatMapTo(mutableSetOf()) { (license, findings) ->
-                val locations = findings.mapTo(sortedSetOf()) { it.key.location }
-
-                val copyrights = findings.flatMap { it.value }.groupBy { it.statement }
-                    .mapTo(sortedSetOf()) { (statement, findings) ->
-                        CopyrightFindings(statement, findings.mapTo(sortedSetOf()) { it.location })
-                    }
-
-                license.decompose().map { LicenseFindings(it, locations, copyrights) }
-            }
     }
 }
 

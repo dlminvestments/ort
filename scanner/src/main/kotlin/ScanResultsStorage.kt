@@ -23,6 +23,8 @@ package org.ossreviewtoolkit.scanner
 import java.sql.DriverManager
 import java.util.Properties
 
+import kotlin.time.measureTimedValue
+
 import org.ossreviewtoolkit.model.AccessStatistics
 import org.ossreviewtoolkit.model.Failure
 import org.ossreviewtoolkit.model.Identifier
@@ -30,17 +32,18 @@ import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Result
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanResultContainer
-import org.ossreviewtoolkit.model.ScannerDetails
 import org.ossreviewtoolkit.model.Success
 import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
 import org.ossreviewtoolkit.model.config.FileBasedStorageConfiguration
 import org.ossreviewtoolkit.model.config.PostgresStorageConfiguration
 import org.ossreviewtoolkit.model.config.ScanStorageConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
+import org.ossreviewtoolkit.model.config.Sw360StorageConfiguration
 import org.ossreviewtoolkit.scanner.storages.*
 import org.ossreviewtoolkit.utils.ORT_FULL_NAME
 import org.ossreviewtoolkit.utils.log
 import org.ossreviewtoolkit.utils.ortDataDirectory
+import org.ossreviewtoolkit.utils.perf
 import org.ossreviewtoolkit.utils.storage.HttpFileStorage
 import org.ossreviewtoolkit.utils.storage.LocalFileStorage
 import org.ossreviewtoolkit.utils.storage.XZCompressedLocalFileStorage
@@ -62,13 +65,27 @@ abstract class ScanResultsStorage {
          * Configure the [ScanResultsStorage]. If [config] does not contain a storage configuration by default a
          * [FileBasedStorage] using a [XZCompressedLocalFileStorage] as backend is configured.
          */
-        fun configure(config: ScannerConfiguration) {
-            storage = if (config.storages.isNullOrEmpty()) {
-                createDefaultStorage()
-            } else {
-                createCompositeStorage(config)
+        fun configure(config: ScannerConfiguration): ScanResultsStorage {
+            // Unfortunately, the smart cast does not work when moving this to a capturing "when" subject.
+            val configuredStorages = config.storages
+
+            storage = when {
+                configuredStorages.isNullOrEmpty() -> createDefaultStorage()
+                configuredStorages.size == 1 -> createStorage(configuredStorages.values.first())
+                else -> createCompositeStorage(config)
             }
+
             log.info { "ScanResultStorage has been configured to ${storage.name}." }
+
+            return storage
+        }
+
+        /**
+         * Create a [FileBasedStorage] to be used as default if no other storage has been configured.
+         */
+        private fun createDefaultStorage(): ScanResultsStorage {
+            val localFileStorage = XZCompressedLocalFileStorage(ortDataDirectory.resolve("$TOOL_NAME/results"))
+            return FileBasedStorage(localFileStorage)
         }
 
         /**
@@ -96,15 +113,8 @@ abstract class ScanResultsStorage {
                 is FileBasedStorageConfiguration -> createFileBasedStorage(config)
                 is PostgresStorageConfiguration -> createPostgresStorage(config)
                 is ClearlyDefinedStorageConfiguration -> createClearlyDefinedStorage(config)
+                is Sw360StorageConfiguration -> TODO()
             }
-
-        /**
-         * Create a [FileBasedStorage] to be used as default if no other storage has been configured.
-         */
-        private fun createDefaultStorage(): ScanResultsStorage {
-            val localFileStorage = XZCompressedLocalFileStorage(ortDataDirectory.resolve("$TOOL_NAME/results"))
-            return FileBasedStorage(localFileStorage)
-        }
 
         /**
          * Create a [FileBasedStorage] based on the [config] passed in.
@@ -181,51 +191,64 @@ abstract class ScanResultsStorage {
      * Read all [ScanResult]s for a package with [id] from the storage. Return a [ScanResultContainer] wrapped in a
      * [Result], which is a [Failure] if no [ScanResult] was found and a [Success] otherwise.
      */
-    fun read(id: Identifier): Result<ScanResultContainer> =
-        readFromStorage(id).also {
-            stats.numReads.incrementAndGet()
-            if (it is Success && it.result.results.isNotEmpty()) {
+    fun read(id: Identifier): Result<ScanResultContainer> {
+        val (result, duration) = measureTimedValue { readFromStorage(id) }
+
+        stats.numReads.incrementAndGet()
+
+        if (result is Success) {
+            if (result.result.results.isNotEmpty()) {
                 stats.numHits.incrementAndGet()
+            }
+
+            log.perf {
+                "Read ${result.result.results.size} scan results for '${id.toCoordinates()}' from " +
+                        "${javaClass.simpleName} in ${duration.inMilliseconds}ms."
             }
         }
 
+        return result
+    }
+
     /**
      * Read those [ScanResult]s for the given [package][pkg] from the storage that are
-     * [compatible][ScannerDetails.isCompatible] with the provided [scannerDetails]. Also, [Package.sourceArtifact],
+     * [compatible][ScannerCriteria.matches] with the provided [scannerCriteria]. Also, [Package.sourceArtifact],
      * [Package.vcs], and [Package.vcsProcessed] are used to check if the scan result matches the expected source code
      * location. That check is important to find the correct results when different revisions of a package using the
      * same version name are used (e.g. multiple scans of a "1.0-SNAPSHOT" version during development). Return a
      * [ScanResultContainer] wrapped in a [Result], which is a [Failure] if no [ScanResult] was found and a [Success]
      * otherwise.
      */
-    fun read(pkg: Package, scannerDetails: ScannerDetails): Result<ScanResultContainer> =
-        readFromStorage(pkg, scannerDetails).also {
-            stats.numReads.incrementAndGet()
-            if (it is Success && it.result.results.isNotEmpty()) {
+    fun read(pkg: Package, scannerCriteria: ScannerCriteria): Result<ScanResultContainer> {
+        val (result, duration) = measureTimedValue { readFromStorage(pkg, scannerCriteria) }
+
+        stats.numReads.incrementAndGet()
+
+        if (result is Success) {
+            if (result.result.results.isNotEmpty()) {
                 stats.numHits.incrementAndGet()
+            }
+
+            log.perf {
+                "Read ${result.result.results.size} scan results for '${pkg.id.toCoordinates()}' from " +
+                        "${javaClass.simpleName} in ${duration.inMilliseconds}ms."
             }
         }
 
+        return result
+    }
+
     /**
-     * Add the given [scanResult], which must include a [ScanResult.rawResult], to the [ScanResultContainer] for the
-     * scanned [Package] with the provided [id]. Depending on the storage implementation this might first read any
-     * existing [ScanResultContainer] and write the new [ScanResultContainer] to the storage again, implicitly deleting
-     * the original storage entry by overwriting it. Return a [Result] describing whether the operation was successful.
+     * Add the given [scanResult] to the [ScanResultContainer] for the scanned [Package] with the provided [id].
+     * Depending on the storage implementation this might first read any existing [ScanResultContainer] and write the
+     * new [ScanResultContainer] to the storage again, implicitly deleting the original storage entry by overwriting it.
+     * Return a [Result] describing whether the operation was successful.
      */
     fun add(id: Identifier, scanResult: ScanResult): Result<Unit> {
         // Do not store empty scan results. It is likely that something went wrong when they were created, and if not,
         // it is cheap to re-create them.
         if (scanResult.summary.fileCount == 0) {
             val message = "Not storing scan result for '${id.toCoordinates()}' because no files were scanned."
-            log.info { message }
-
-            return Failure(message)
-        }
-
-        // Do not store scan results without raw result. The raw result can be set to null for other usages, but in the
-        // storage it must never be null.
-        if (scanResult.rawResult == null) {
-            val message = "Not storing scan result for '${id.toCoordinates()}' because the raw result is null."
             log.info { message }
 
             return Failure(message)
@@ -241,7 +264,13 @@ abstract class ScanResultsStorage {
             return Failure(message)
         }
 
-        return addToStorage(id, scanResult)
+        val (result, duration) = measureTimedValue { addToStorage(id, scanResult) }
+
+        log.perf {
+            "Added scan result for '${id.toCoordinates()}' to ${javaClass.simpleName} in ${duration.inMilliseconds}ms."
+        }
+
+        return result
     }
 
     /**
@@ -251,9 +280,9 @@ abstract class ScanResultsStorage {
 
     /**
      * Internal version of [read] that does not update the [access statistics][stats]. Implementations may want to
-     * override this function if they can filter for the wanted [scannerDetails] in a more efficient way.
+     * override this function if they can filter for the wanted [scannerCriteria] in a more efficient way.
      */
-    protected open fun readFromStorage(pkg: Package, scannerDetails: ScannerDetails): Result<ScanResultContainer> {
+    protected open fun readFromStorage(pkg: Package, scannerCriteria: ScannerCriteria): Result<ScanResultContainer> {
         val scanResults = when (val readResult = readFromStorage(pkg.id)) {
             is Success -> readResult.result.results.toMutableList()
             is Failure -> return readResult
@@ -272,10 +301,10 @@ abstract class ScanResultsStorage {
         }
 
         // Only keep scan results from compatible scanners.
-        scanResults.retainAll { scannerDetails.isCompatible(it.scanner) }
+        scanResults.retainAll { scannerCriteria.matches(it.scanner) }
         if (scanResults.isEmpty()) {
             log.debug {
-                "No stored scan results found for $scannerDetails. The following entries with incompatible scanners " +
+                "No stored scan results found for $scannerCriteria. The following entries with incompatible scanners " +
                         "have been ignored: ${scanResults.map { it.scanner }}"
             }
             return Success(ScanResultContainer(pkg.id, scanResults))

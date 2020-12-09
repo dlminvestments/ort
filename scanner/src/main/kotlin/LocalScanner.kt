@@ -22,10 +22,14 @@ package org.ossreviewtoolkit.scanner
 import com.fasterxml.jackson.databind.JsonNode
 
 import com.vdurmont.semver4j.Requirement
+import com.vdurmont.semver4j.Semver
 
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.Executors
+
+import kotlin.time.measureTime
+import kotlin.time.measureTimedValue
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -36,7 +40,6 @@ import kotlinx.coroutines.withContext
 import org.ossreviewtoolkit.downloader.DownloadException
 import org.ossreviewtoolkit.downloader.Downloader
 import org.ossreviewtoolkit.downloader.VersionControlSystem
-import org.ossreviewtoolkit.model.EMPTY_JSON_NODE
 import org.ossreviewtoolkit.model.Environment
 import org.ossreviewtoolkit.model.Failure
 import org.ossreviewtoolkit.model.Identifier
@@ -55,9 +58,9 @@ import org.ossreviewtoolkit.model.ScannerRun
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.Success
 import org.ossreviewtoolkit.model.VcsInfo
+import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
-import org.ossreviewtoolkit.model.mapper
 import org.ossreviewtoolkit.scanner.storages.PostgresStorage
 import org.ossreviewtoolkit.utils.CommandLineTool
 import org.ossreviewtoolkit.utils.NamedThreadFactory
@@ -66,6 +69,7 @@ import org.ossreviewtoolkit.utils.collectMessagesAsString
 import org.ossreviewtoolkit.utils.fileSystemEncode
 import org.ossreviewtoolkit.utils.getPathFromEnvironment
 import org.ossreviewtoolkit.utils.log
+import org.ossreviewtoolkit.utils.perf
 import org.ossreviewtoolkit.utils.safeMkdirs
 import org.ossreviewtoolkit.utils.showStackTrace
 import org.ossreviewtoolkit.utils.storage.FileArchiver
@@ -75,6 +79,14 @@ import org.ossreviewtoolkit.utils.storage.FileArchiver
  * serial order. Scan results can be stored in a [ScanResultsStorage].
  */
 abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanner(name, config), CommandLineTool {
+    companion object {
+        const val PROP_CRITERIA_NAME = "regScannerName"
+
+        const val PROP_CRITERIA_MIN_VERSION = "minVersion"
+
+        const val PROP_CRITERIA_MAX_VERSION = "maxVersion"
+    }
+
     private val archiver by lazy {
         config.archive?.createFileArchiver() ?: FileArchiver.DEFAULT
     }
@@ -88,27 +100,21 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
      * The directory the scanner is installed to.
      */
     private val scannerDir by lazy {
-        getPathFromEnvironment(command())?.parentFile?.takeIf {
-            getVersion(it) == scannerVersion
-        } ?: File("")
-    }
-
-    /**
-     * The required version of the scanner.
+aster
      */
-    protected abstract val scannerVersion: String
+    protected abstract val expectedVersion: String
 
     /**
      * The full path to the scanner executable.
      */
     protected val scannerPath by lazy { scannerDir.resolve(command()) }
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildLoose(scannerVersion)
-
     /**
-     * Return the actual version of the scanner, or an empty string in case of failure.
+     * The actual version of the scanner, or an empty string in case of failure.
      */
-    open fun getVersion() = getVersion(scannerDir)
+    open val version by lazy { getVersion(scannerDir) }
+
+    override fun getVersionRequirement(): Requirement = Requirement.buildLoose(expectedVersion)
 
     /**
      * Return the configuration of this [LocalScanner].
@@ -116,9 +122,26 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
     abstract fun getConfiguration(): String
 
     /**
+     * Return a [ScannerCriteria] object to be used when looking up existing scan results from a [ScanResultsStorage].
+     * Per default, the properties of this object are initialized to match this scanner implementation. It is,
+     * however, possible to override these defaults from the configuration, in the [ScannerConfiguration.options]
+     * property: Use properties of the form _scannerName.criteria.property_, where _scannerName_ is the name of
+     * the scanner the configuration applies to, and _property_ is the name of a property of the [ScannerCriteria]
+     * class. For instance, to specify that a specific minimum version of ScanCode is allowed, set this property:
+     * `options.ScanCode.criteria.minScannerVersion=3.0.2`.
+     */
+    open fun getScannerCriteria(): ScannerCriteria {
+        val options = config.options?.get(scannerName).orEmpty()
+        val minVersion = parseVersion(options[PROP_CRITERIA_MIN_VERSION]) ?: Semver(normalizeVersion(expectedVersion))
+        val maxVersion = parseVersion(options[PROP_CRITERIA_MAX_VERSION]) ?: minVersion.nextMinor()
+        val name = options[PROP_CRITERIA_NAME] ?: scannerName
+        return ScannerCriteria(name, minVersion, maxVersion, ScannerCriteria.exactConfigMatcher(getConfiguration()))
+    }
+
+    /**
      * Return the [ScannerDetails] of this [LocalScanner].
      */
-    fun getDetails() = ScannerDetails(scannerName, getVersion(), getConfiguration())
+    fun getDetails() = ScannerDetails(scannerName, version, getConfiguration())
 
     override suspend fun scanPackages(packages: List<Package>, outputDirectory: File, downloadDirectory: File):
             Map<Package, List<ScanResult>> {
@@ -162,6 +185,7 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
         scanDispatcher: CoroutineDispatcher
     ): List<ScanResult> {
         val scannerDetails = getDetails()
+        val scannerCriteria = getScannerCriteria()
 
         if (pkg.isMetaDataOnly) {
             log.info { "Skipping '${pkg.id.toCoordinates()}' as it is meta data only." }
@@ -173,23 +197,26 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
             val storedResults = withContext(storageDispatcher) {
                 log.info {
                     "Looking for stored scan results for ${pkg.id.toCoordinates()} and " +
-                            "$scannerDetails $packageIndex."
+                            "$scannerCriteria $packageIndex."
                 }
 
-                readFromStorage(scannerDetails, pkg, outputDirectory)
+                readFromStorage(scannerCriteria, pkg)
             }
 
             if (storedResults.isNotEmpty()) {
                 log.info {
                     "Found ${storedResults.size} stored scan result(s) for ${pkg.id.toCoordinates()} " +
-                            "and $scannerDetails, not scanning the package again $packageIndex."
+                            "and $scannerCriteria, not scanning the package again $packageIndex."
                 }
 
-                storedResults
+                // Due to a temporary bug that has been fixed by now the scan results for packages were not properly
+                // filtered. Filter them again to fix the problem also scan storage entries which exhibit that problem.
+                // TODO: This filtering can be removed after a while.
+                storedResults.map { it.filterByVcsPath() }
             } else {
                 withContext(scanDispatcher) {
                     log.info {
-                        "No stored result found for ${pkg.id.toCoordinates()} and $scannerDetails, " +
+                        "No stored result found for ${pkg.id.toCoordinates()} and $scannerCriteria, " +
                                 "scanning package in thread '${Thread.currentThread().name}' " +
                                 "$packageIndex."
                     }
@@ -203,10 +230,6 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
                         }
                     )
                 }
-            }.map {
-                // Remove the now unneeded reference to rawResult here to allow garbage collection to
-                // clean it up.
-                it.copy(rawResult = null)
             }
         } catch (e: ScanException) {
             e.showStackTrace()
@@ -230,8 +253,7 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
                         licenseFindings = sortedSetOf(),
                         copyrightFindings = sortedSetOf(),
                         issues = listOf(issue)
-                    ),
-                    rawResult = EMPTY_JSON_NODE
+                    )
                 )
             )
         }
@@ -250,23 +272,11 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
      * Return matching [ScanResult]s for this [Package][pkg] from the [ScanResultsStorage]. If no results are found an
      * empty list is returned.
      */
-    private fun readFromStorage(scannerDetails: ScannerDetails, pkg: Package, outputDirectory: File): List<ScanResult> {
-        val resultsFile = getResultsFile(scannerDetails, pkg, outputDirectory)
-
-        val scanResults = when (val storageResult = ScanResultsStorage.storage.read(pkg, scannerDetails)) {
+    private fun readFromStorage(scannerCriteria: ScannerCriteria, pkg: Package): List<ScanResult> =
+        when (val storageResult = ScanResultsStorage.storage.read(pkg, scannerCriteria)) {
             is Success -> storageResult.result.deduplicateScanResults().results
             is Failure -> emptyList()
         }
-
-        if (scanResults.isNotEmpty()) {
-            // Some external tools rely on the raw results filer to be written to the scan results directory, so write
-            // the first stored result to resultsFile. This feature will be removed when the reporter tool becomes
-            // available.
-            resultsFile.mapper().writeValue(resultsFile, scanResults.first().rawResult)
-        }
-
-        return scanResults
-    }
 
     /**
      * Scan the provided [pkg] for license information and write the results to [outputDirectory] using the scanner's
@@ -276,8 +286,10 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
      *
      * Return the [ScanResult], if the package could not be scanned a [ScanException] is thrown.
      */
-    private fun scanPackage(
-        scannerDetails: ScannerDetails, pkg: Package, outputDirectory: File,
+    fun scanPackage(
+        scannerDetails: ScannerDetails,
+        pkg: Package,
+        outputDirectory: File,
         downloadDirectory: File
     ): ScanResult {
         val resultsFile = getResultsFile(scannerDetails, pkg, outputDirectory)
@@ -304,8 +316,7 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
                             message = "Could not download '${pkg.id.toCoordinates()}': ${e.collectMessagesAsString()}"
                         )
                     )
-                ),
-                EMPTY_JSON_NODE
+                )
             )
         }
 
@@ -320,7 +331,16 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
 
         archiveFiles(downloadResult.downloadDirectory, pkg.id, provenance)
 
-        val scanResult = scanPathInternal(downloadResult.downloadDirectory, resultsFile).copy(provenance = provenance)
+        val (scanResult, scanDuration) = measureTimedValue {
+            scanPathInternal(downloadResult.downloadDirectory, resultsFile)
+                .copy(provenance = provenance)
+                .filterByVcsPath()
+        }
+
+        log.perf {
+            "Scanned source code of '${pkg.id.toCoordinates()}' with ${javaClass.simpleName} in " +
+                    "${scanDuration.inMilliseconds}ms."
+        }
 
         return when (val storageResult = ScanResultsStorage.storage.add(pkg.id, scanResult)) {
             is Success -> scanResult
@@ -342,7 +362,9 @@ abstract class LocalScanner(name: String, config: ScannerConfiguration) : Scanne
 
         val path = "${id.toPath()}/${provenance.hash()}"
 
-        archiver.archive(directory, path)
+        val duration = measureTime { archiver.archive(directory, path) }
+
+        log.perf { "Archived files for '${id.toCoordinates()}' in ${duration.inMilliseconds}ms." }
     }
 
     /**
@@ -481,3 +503,24 @@ private fun ScanResultContainer.deduplicateScanResults(): ScanResultContainer {
 
     return copy(results = deduplicatedResults)
 }
+
+private fun ScanResult.filterByVcsPath(): ScanResult {
+    val path = provenance.vcsInfo?.takeIf { it.type != VcsType.GIT_REPO }?.path.orEmpty()
+
+    return filterPath(path)
+}
+
+/**
+ * Parse the given [versionStr] to a [Semver] object, trying to be failure tolerant.
+ */
+private fun parseVersion(versionStr: String?): Semver? =
+    versionStr?.let { Semver(normalizeVersion(it)) }
+
+/**
+ * Normalize the given [versionStr] to make sure that it can be parsed to a [Semver]. The [Semver] class
+ * requires that all components of a semantic version number are present. This function enables a more lenient
+ * style when declaring a version. So for instance, the user can just write "2", and this gets expanded to
+ * "2.0.0".
+ */
+private fun normalizeVersion(versionStr: String): String =
+    versionStr.takeIf { v -> v.count { it == '.' } >= 2 } ?: normalizeVersion("$versionStr.0")

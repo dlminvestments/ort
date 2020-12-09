@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.model.config
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.extensions.system.withEnvironment
 import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -32,6 +33,8 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 
 import java.io.File
 import java.lang.IllegalArgumentException
+
+import kotlin.io.path.createTempFile
 
 import org.ossreviewtoolkit.utils.ORT_NAME
 import org.ossreviewtoolkit.utils.test.containExactly as containExactlyEntries
@@ -107,19 +110,25 @@ class OrtConfigurationTest : WordSpec({
                 """.trimIndent()
             )
 
-            val config = OrtConfiguration.load(
-                args = mapOf(
-                    "ort.scanner.storages.postgresStorage.schema" to "argsSchema",
-                    "other.property" to "someValue"
-                ),
-                configFile = configFile
-            )
+            val env = mapOf("ort.scanner.storages.postgresStorage.password" to "envPassword")
 
-            config.scanner?.storages shouldNotBeNull {
-                val postgresStorage = this["postgresStorage"]
-                postgresStorage.shouldBeInstanceOf<PostgresStorageConfiguration>()
-                postgresStorage.username shouldBe "username"
-                postgresStorage.schema shouldBe "argsSchema"
+            withEnvironment(env) {
+                val config = OrtConfiguration.load(
+                    args = mapOf(
+                        "ort.scanner.storages.postgresStorage.schema" to "argsSchema",
+                        "ort.scanner.storages.postgresStorage.password" to "argsPassword",
+                        "other.property" to "someValue"
+                    ),
+                    configFile = configFile
+                )
+
+                config.scanner?.storages shouldNotBeNull {
+                    val postgresStorage = this["postgresStorage"]
+                    postgresStorage.shouldBeInstanceOf<PostgresStorageConfiguration>()
+                    postgresStorage.username shouldBe "username"
+                    postgresStorage.schema shouldBe "argsSchema"
+                    postgresStorage.password shouldBe "envPassword"
+                }
             }
         }
 
@@ -158,6 +167,65 @@ class OrtConfigurationTest : WordSpec({
 
             config.scanner.shouldBeNull()
         }
+
+        "support references to environment variables" {
+            val configFile = createTestConfig(
+                """
+                ort {
+                  scanner {
+                    storages {
+                      postgresStorage {
+                        url = "postgresql://your-postgresql-server:5444/your-database"
+                        schema = schema
+                        username = ${'$'}{POSTGRES_USERNAME}
+                        password = ${'$'}{POSTGRES_PASSWORD}
+                      }
+                    }
+                  }
+                }
+                """.trimIndent()
+            )
+            val user = "scott"
+            val password = "tiger"
+            val env = mapOf("POSTGRES_USERNAME" to user, "POSTGRES_PASSWORD" to password)
+
+            withEnvironment(env) {
+                val config = OrtConfiguration.load(configFile = configFile)
+
+                config.scanner?.storages shouldNotBeNull {
+                    val postgresStorage = this["postgresStorage"]
+                    postgresStorage.shouldBeInstanceOf<PostgresStorageConfiguration>()
+                    postgresStorage.username shouldBe user
+                    postgresStorage.password shouldBe password
+                }
+            }
+        }
+
+        "support environmental variables" {
+            val user = "user"
+            val password = "password"
+            val url = "url"
+            val schema = "schema"
+            val env = mapOf(
+                "ort.scanner.storages.postgresStorage.username" to user,
+                "ort.scanner.storages.postgresStorage.url" to url,
+                "ort__scanner__storages__postgresStorage__schema" to schema,
+                "ort__scanner__storages__postgresStorage__password" to password
+            )
+
+            withEnvironment(env) {
+                val config = OrtConfiguration.load(configFile = File("dummyPath"))
+
+                config.scanner?.storages shouldNotBeNull {
+                    val postgresStorage = this["postgresStorage"]
+                    postgresStorage.shouldBeInstanceOf<PostgresStorageConfiguration>()
+                    postgresStorage.username shouldBe user
+                    postgresStorage.password shouldBe password
+                    postgresStorage.url shouldBe url
+                    postgresStorage.schema shouldBe schema
+                }
+            }
+        }
     }
 })
 
@@ -165,7 +233,7 @@ class OrtConfigurationTest : WordSpec({
  * Create a test configuration with the [data] specified.
  */
 private fun createTestConfig(data: String): File =
-    createTempFile(ORT_NAME, ".conf").apply {
+    createTempFile(ORT_NAME, ".conf").toFile().apply {
         writeText(data)
         deleteOnExit()
     }

@@ -87,7 +87,7 @@ class OrtMain : CliktCommand(name = ORT_NAME, epilog = "* denotes required optio
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P scanner.postgresStorage.schema=testSchema"
+                "-P ort.scanner.storages.postgresStorage.schema=testSchema"
     ).associate()
 
     private val forceOverwrite by option(
@@ -119,6 +119,7 @@ class OrtMain : CliktCommand(name = ORT_NAME, epilog = "* denotes required optio
         }
 
         subcommands(
+            AdvisorCommand(),
             AnalyzerCommand(),
             DownloaderCommand(),
             EvaluatorCommand(),
@@ -126,7 +127,8 @@ class OrtMain : CliktCommand(name = ORT_NAME, epilog = "* denotes required optio
             RequirementsCommand(),
             ScannerCommand(),
             UploadCurationsCommand(),
-            UploadResultCommand()
+            UploadResultToPostgresCommand(),
+            UploadResultToSw360Command()
         )
 
         versionOption(
@@ -166,7 +168,7 @@ class OrtMain : CliktCommand(name = ORT_NAME, epilog = "* denotes required optio
         val command = commandName?.let { " '$commandName'" }.orEmpty()
 
         val header = mutableListOf<String>()
-        val maxMemInMib = env.maxMemory / (1024L * 1024L)
+        val maxMemInMib = env.maxMemory / (1024 * 1024)
 
         """
             ________ _____________________

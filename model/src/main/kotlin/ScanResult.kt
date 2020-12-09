@@ -19,15 +19,14 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonAlias
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
 
 /**
  * The result of a single scan of a single package.
  */
+@JsonIgnoreProperties("raw_result")
 data class ScanResult(
     /**
      * Provenance information about the scanned source code.
@@ -42,21 +41,15 @@ data class ScanResult(
     /**
      * A summary of the scan results.
      */
-    val summary: ScanSummary,
-
-    /**
-     * The raw output of the scanner. Can be null if the raw result shall not be included. If the raw result is
-     * empty it must not be null but [EMPTY_JSON_NODE].
-     */
-    @JsonAlias("rawResult")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    val rawResult: JsonNode? = null
+    val summary: ScanSummary
 ) {
     /**
      * Filter all detected licenses and copyrights from the [summary] which are underneath [path], and set the [path]
      * for [provenance]. Findings which [RootLicenseMatcher] assigns as root license files for [path] are also kept.
      */
     fun filterPath(path: String): ScanResult {
+        if (path.isBlank()) return this
+
         val applicableLicenseFiles = RootLicenseMatcher().getApplicableLicenseFilesForDirectories(
             licenseFindings = summary.licenseFindings,
             directories = listOf(path)

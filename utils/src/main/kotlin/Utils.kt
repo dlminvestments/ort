@@ -51,7 +51,7 @@ val ortDataDirectory by lazy {
 }
 
 /**
- * Return whether the [receiver] (usually an instance of a data class) has any non-null property.
+ * Return whether [T] (usually an instance of a data class) has any non-null property.
  */
 inline fun <reified T : Any> T.hasNonNullProperty() =
     T::class.memberProperties.asSequence().map { it.get(this) }.any { it != null }
@@ -126,6 +126,22 @@ fun filterVersionNames(version: String, names: List<String>, project: String? = 
 }
 
 /**
+ * Return recursively all ancestor directories of the given absolute [file], ordered along the path from
+ * the parent of [file] to the root.
+ */
+fun getAllAncestorDirectories(file: String): List<String> {
+    val result = mutableListOf<String>()
+
+    var ancestorDir = File(file).parentFile
+    while (ancestorDir != null) {
+        result += ancestorDir.invariantSeparatorsPath
+        ancestorDir = ancestorDir.parentFile
+    }
+
+    return result
+}
+
+/**
  * Return the longest parent directory that is common to all [files], or null if they have no directory in common.
  */
 fun getCommonFileParent(files: Collection<File>): File? =
@@ -192,7 +208,7 @@ fun joinNonBlank(vararg strings: String, separator: String = " - ") =
  * Normalize a string representing a [VCS URL][vcsUrl] to a common string form.
  */
 fun normalizeVcsUrl(vcsUrl: String): String {
-    var url = vcsUrl.trimEnd('/')
+    var url = vcsUrl.trim().trimEnd('/')
 
     if (url.startsWith(":pserver:") || url.startsWith(":ext:")) {
         // Do not touch CVS URLs for now.
@@ -319,20 +335,4 @@ fun trapSystemExitCall(block: () -> Unit): Int? {
     }
 
     return exitCode
-}
-
-/**
- * Return recursively all ancestor directories of the given absolute [file], ordered along the path from
- * the parent of [file] to the root.
- */
-fun getAllAncestorDirectories(file: String): List<String> {
-    val result = mutableListOf<String>()
-
-    var ancestorDir = File(file).parentFile
-    while (ancestorDir != null) {
-        result += ancestorDir.invariantSeparatorsPath
-        ancestorDir = ancestorDir.parentFile
-    }
-
-    return result
 }

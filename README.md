@@ -2,31 +2,29 @@
 
 &nbsp;
 
-| Linux (OpenJDK 11)             | Windows (Oracle JDK 11)         | JitPack (OpenJDK 8)             |
-| :----------------------------- | :------------------------------ | :------------------------------ |
-| [![Linux build status][1]][2]  | [![Windows build status][3]][4] | [![JitPack build status][5]][6] |
-| [![Linux code coverage][7]][8] |                                 |                                 |
+| Linux + Windows (OpenJDK 11)   | JitPack (OpenJDK 11)            |
+| :----------------------------- | :------------------------------ |
+| [![Build status][1]][2]        | [![JitPack build status][3]][4] |
+| [![Linux code coverage][5]][6] |                                 |
 
 | License status           | Code quality      | TODOs              | Interact with us!              |
 | :----------------------- | :---------------- | :----------------- | :----------------------------- |
-| [![REUSE status][9]][10] | [![LGTM][11]][12] | [![TODOs][13]][14] | [![ort-talk][15]][16]          |
+| [![REUSE status][7]][8] | [![LGTM][9]][10] | [![TODOs][11]][12] | [![ort-talk][13]][14]          |
 
-[1]: https://travis-ci.com/oss-review-toolkit/ort.svg?branch=master
-[2]: https://travis-ci.com/oss-review-toolkit/ort
-[3]: https://ci.appveyor.com/api/projects/status/8oh5ld40c8h19jr5/branch/master?svg=true
-[4]: https://ci.appveyor.com/project/oss-review-toolkit/ort/branch/master
-[5]: https://jitpack.io/v/oss-review-toolkit/ort.svg
-[6]: https://jitpack.io/#oss-review-toolkit/ort
-[7]: https://codecov.io/gh/oss-review-toolkit/ort/branch/master/graph/badge.svg
-[8]: https://codecov.io/gh/oss-review-toolkit/ort/
-[9]: https://api.reuse.software/badge/github.com/oss-review-toolkit/ort
-[10]: https://api.reuse.software/info/github.com/oss-review-toolkit/ort
-[11]: https://img.shields.io/lgtm/alerts/g/oss-review-toolkit/ort.svg?logo=lgtm&logoWidth=18
-[12]: https://lgtm.com/projects/g/oss-review-toolkit/ort/alerts/
-[13]: https://badgen.net/https/api.tickgit.com/badgen/github.com/oss-review-toolkit/ort
-[14]: https://www.tickgit.com/browse?repo=github.com/oss-review-toolkit/ort
-[15]: https://img.shields.io/badge/slack-ort--talk-blue.svg?longCache=true&logo=slack
-[16]: https://join.slack.com/t/ort-talk/shared_invite/enQtMzk3MDU5Njk0Njc1LThiNmJmMjc5YWUxZTU4OGI5NmY3YTFlZWM5YTliZmY5ODc0MGMyOWIwYmRiZWFmNGMzOWY2NzVhYTI0NTJkNmY
+[1]: https://dev.azure.com/oss-review-toolkit/ort/_apis/build/status/oss-review-toolkit.ort?branchName=master
+[2]: https://dev.azure.com/oss-review-toolkit/ort/_build/latest?definitionId=2&branchName=master
+[3]: https://jitpack.io/v/oss-review-toolkit/ort.svg
+[4]: https://jitpack.io/#oss-review-toolkit/ort
+[5]: https://codecov.io/gh/oss-review-toolkit/ort/branch/master/graph/badge.svg
+[6]: https://codecov.io/gh/oss-review-toolkit/ort/
+[7]: https://api.reuse.software/badge/github.com/oss-review-toolkit/ort
+[8]: https://api.reuse.software/info/github.com/oss-review-toolkit/ort
+[9]: https://img.shields.io/lgtm/alerts/g/oss-review-toolkit/ort.svg?logo=lgtm&logoWidth=18
+[10]: https://lgtm.com/projects/g/oss-review-toolkit/ort/alerts/
+[11]: https://badgen.net/https/api.tickgit.com/badgen/github.com/oss-review-toolkit/ort
+[12]: https://www.tickgit.com/browse?repo=github.com/oss-review-toolkit/ort
+[13]: https://img.shields.io/badge/slack-ort--talk-blue.svg?longCache=true&logo=slack
+[14]: https://join.slack.com/t/ort-talk/shared_invite/enQtMzk3MDU5Njk0Njc1LThiNmJmMjc5YWUxZTU4OGI5NmY3YTFlZWM5YTliZmY5ODc0MGMyOWIwYmRiZWFmNGMzOWY2NzVhYTI0NTJkNmY
 
 # Introduction
 
@@ -43,14 +41,12 @@ use):
   Version Control System (VCS) or other means are used to retrieve the source code.
 * [_Scanner_](#scanner) - uses configured source code scanners to detect license / copyright findings, abstracting
   the type of scanner.
+* [_Advisor_](#advisor) - retrieves security advisories for used dependencies from configured vulnerability data 
+  services.
 * [_Evaluator_](#evaluator) - evaluates license / copyright findings against customizable policy rules and license
   classifications.
 * [_Reporter_](#reporter) - presents results in various formats such as visual reports, Open Source notices or
   Bill-Of-Materials (BOMs) to easily identify dependencies, licenses, copyrights or policy rule violations.
-
-The following tools are [planned](https://github.com/oss-review-toolkit/ort/projects/1) but not yet available:
-
-* _Advisor_ - retrieves security advisories based on the Analyzer result.
 
 # Installation
 
@@ -83,8 +79,7 @@ Change into the directory with ORT's source code and run `docker build -t ort .`
 
 Install these additional prerequisites:
 
-* OpenJDK 8 or Oracle JDK 8u161 or later (not the JRE as you need the `javac` compiler); also remember to set the
-  `JAVA_HOME` environment variable accordingly.
+* Java Development Kit (JDK) version 11 or later; also remember to set the `JAVA_HOME` environment variable accordingly.
 
 Change into the directory with ORT's source code and run `./gradlew installDist` (on the first run this will bootstrap
 Gradle and download all required dependencies).
@@ -157,15 +152,24 @@ Please see [Getting Started](./docs/getting-started.md) for an introduction to t
 
 ## Configuration
 
-ORT looks for its configuration files in the directory pointed to by the `ORT_CONFIG_DIR` environment variable. If this
-variable is not set, it defaults to the `config` directory below the directory pointed to by the `ORT_DATA_DIR`
-environment variable, which in turn defaults to the `.ort` directory below the current user's home directory. See the
-table below for the supported environment variables and their defaults:
+### Environment variables
+
+ORT supports several environment variables that influence its behavior:
 
 | Name | Default value | Purpose |
 | ---- | ------------- | ------- |
 | ORT_DATA_DIR | `~/.ort` | All data, like caches, archives, storages (read & write) |
 | ORT_CONFIG_DIR | `$ORT_DATA_DIR/config` | Configuration files, see below (read only) |
+| ORT_HTTP_USERNAME | Empty (n/a) | Generic username to use for HTTP(S) downloads |
+| ORT_HTTP_PASSWORD | Empty (n/a) | Generic password to use for HTTP(S) downloads |
+| http_proxy | Empty (n/a) | Proxy to use for HTTP downloads |
+| https_proxy | Empty (n/a) | Proxy to use for HTTPS downloads |
+
+### Configuration files
+
+ORT looks for its configuration files in the directory pointed to by the `ORT_CONFIG_DIR` environment variable. If this
+variable is not set, it defaults to the `config` directory below the directory pointed to by the `ORT_DATA_DIR`
+environment variable, which in turn defaults to the `.ort` directory below the current user's home directory.
 
 The following provides an overview of the various configuration files that can be used to customize ORT behavior:
 
@@ -178,6 +182,36 @@ operational.
 | Format | Scope | Default location | Default value |
 | ------ | ----- | ---------------- | ------------- |
 | HOCON | Global | `$ORT_CONFIG_DIR/ort.conf` | Empty ([built-in](./model/src/main/resources/default.conf)) |
+
+The [reference configuration file](./model/src/test/assets/reference.conf) gives a good impression about the content
+of the main ORT configuration file. It consists of sections related to different sub components of ORT. The meaning
+of these sections and the properties they can contain is described together with the corresponding sub components.
+
+While the file is rather static, there are means to override configuration options for a specific run of ORT or to
+customize the configuration to a specific environment. The following options are supported, in order of precedence:
+
+* Properties can be defined via environment variables by using the full property path as the variable name.
+  For instance, one can override the Postgres schema by setting 
+  `ort.scanner.storages.postgresStorage.schema=test_schema`. The variable's name is case sensitive.
+  Some programs like Bash do not support dots in variable names. For this case, the dots can be
+  replaced by double underscores, i.e., the above example is turned into 
+  `ort__scanner__storages__postgresStorage__schema=test_schema`.
+* In addition to that, one can override the values of properties on the command line using the `-P` option. The option expects a
+  key-value pair. Again, the key must define the full path to the property to be overridden, e.g.
+  `-P ort.scanner.storages.postgresStorage.schema=test_schema`. The `-P` option can be repeated on the command
+  line to override multiple properties.
+* Properties in the configuration file can reference environment variables using the syntax `${VAR}`.
+  This is especially useful to reference dynamic or sensitive data. As an example, the credentials for the
+  Postgres database used as scan results storage could be defined in the `POSTGRES_USERNAME` and `POSTGRES_PASSWORD`
+  environment variables. The configuration file can then reference these values as follows:
+
+  ```hocon
+  postgres {
+    url = "jdbc:postgresql://your-postgresql-server:5444/your-database"
+    username = ${POSTGRES_USERNAME}
+    password = ${POSTGRES_PASSWORD}
+  }
+  ```
 
 #### [Copyright garbage file](./docs/config-file-copyright-garbage-yml.md)
 
@@ -212,13 +246,13 @@ A Kotlin script that enables the injection of how-to-fix texts in markdown forma
 | ------ | ----- | ---------------- | ------------- |
 | Kotlin script | Global | `$ORT_CONFIG_DIR/how-to-fix-text-provider.kts` | Empty (n/a) |
 
-#### [License configuration file](./docs/config-file-licenses-yml.md)
+#### [License classifications file](docs/config-file-license-classifications-yml.md)
 
 A file that contains user-defined categorization of licenses.
 
 | Format | Scope | Default location | Default value |
 | ------ | ----- | ---------------- | ------------- |
-| YAML / JSON | Global | `$ORT_CONFIG_DIR/licenses.yml` | Empty (n/a) |
+| YAML / JSON | Global | `$ORT_CONFIG_DIR/license-classifications.yml` | Empty (n/a) |
 
 #### [Resolution file](./docs/config-file-resolutions-yml.md)
 
@@ -370,17 +404,19 @@ After the declaration of the storage backends, the configuration file has to spe
 scanner should use for looking up existing scan results or to store new results. This is done in two list properties
 named _storageReaders_ and _storageWriters_. The lists reference the names of the storage backends declared in the
 _storages_ section. The scanner invokes the storage backends in the order they appear in the lists; so for readers,
-this defines a priority for look-up operations. Each storage backend can act as a reader; however, some types do not 
-support updates and thus cannot serve as writers. If a storage backend is referenced both as reader and writer, the 
+this defines a priority for look-up operations. Each storage backend can act as a reader; however, some types do not
+support updates and thus cannot serve as writers. If a storage backend is referenced both as reader and writer, the
 scanner creates only a single instance of this storage class.
 
-The following subsections describe the different storage backend implementations supported by ORT. 
+The following subsections describe the different storage backend implementations supported by ORT. Note that the name of
+a storage entry (like `fileBasedStorage`) can be freely chosen. That name is then used to refer to the storage from the
+`storageReaders` and `storageWriters` sections.
 
 ### Local File Storage
 
-By default the _scanner_ stores scan results on the local file system in the current user's home directory (i.e.
-`~/.ort/scanner/scan-results`) for later reuse. The storage directory can be customized by passing an ORT configuration
-file (`-c`) that contains a respective local file storage configuration:
+By default, the _scanner_ stores scan results on the local file system in the current user's home directory (i.e.
+`~/.ort/scanner/scan-results`) for later reuse. Settings like the storage directory and the compression flag can be
+customized in the ORT configuration file (`-c`) with a respective storage configuration:
 
 ```hocon
 ort {
@@ -499,6 +535,31 @@ ort {
 }
 ```
 
+<a name="advisor">&nbsp;</a>
+
+[![Advisor](./logos/advisor.png)](./advisor/src/main/kotlin)
+
+The _advisor_ retrieves security advisories from configured services. It requires the analyzer result as an input.
+
+### Configuration
+
+The advisor needs to be configured in the ORT configuration file:
+
+```hocon
+ort {
+  advisor {
+    nexusiq {
+      serverUrl = "https://nexusiq.ossreviewtoolkit.org"
+      username = myUser
+      password = myPassword
+    }
+  }
+}
+```
+
+Currently [Nexus IQ Server](https://help.sonatype.com/iqserver) (`-a NexusIQ`) is the only supported security data
+provider.
+
 <a name="evaluator">&nbsp;</a>
 
 [![Evaluator](./logos/evaluator.png)](./evaluator/src/main/kotlin)
@@ -511,13 +572,14 @@ well. See [rules.kts](./examples/rules.kts) for an example file.
 
 [![Reporter](./logos/reporter.png)](./reporter/src/main/kotlin)
 
-The _reporter_ generates human-readable reports from the scan result file generated by the _scanner_ (`-s`). It is
-designed to support multiple output formats.
-
-Currently, the following report formats are supported (reporter names are case-insensitive):
+The _reporter_ generates a wide variety of documents in different formats from ORT result files. Currently, the
+following formats are supported (reporter names are case-insensitive):
 
 * [Amazon OSS Attribution Builder](https://github.com/amzn/oss-attribution-builder) document (*experimental*, `-f AmazonOssAttributionBuilder`)
-* [Antenna Attribution Document (PDF)](./docs/reporters/AntennaAttributionDocumentReporter.md) (`-f AntennaAttributionDocument`)
+* [AsciiDoc Template](docs/reporters/AsciiDocTemplateReporter.md) (`-f AsciiDocTemplate`)
+  * Content customizable with [Apache Freemarker](https://freemarker.apache.org/) templates and [AsciiDoc](https://asciidoc.org/)
+  * Supports all AsciiDoc backends
+  * PDF style customizable with Asciidoctor [PDF themes](https://github.com/asciidoctor/asciidoctor-pdf/blob/master/docs/theming-guide.adoc)
 * [CycloneDX](https://cyclonedx.org/) BOM (`-f CycloneDx`)
 * [Excel](https://products.office.com/excel) sheet (`-f Excel`)
 * [GitLabLicenseModel](https://docs.gitlab.com/ee/ci/pipelines/job_artifacts.html#artifactsreportslicense_scanning-ultimate) (`-f GitLabLicenseModel`)
@@ -536,10 +598,9 @@ ORT is being continuously used on Linux, Windows and macOS by the
 [core development team](https://github.com/orgs/oss-review-toolkit/people), so these operating systems are
 considered to be well supported.
 
-To run the ORT binaries (also see [Installation from binaries](#from-binaries)) at least a Java Runtime Environment
-(JRE) version 8 is required, but using version 11 is recommended. Memory and CPU requirements vary depending on the size
-and type of project(s) to analyze / scan, but the general recommendation is to configure the JRE with 8 GiB of memory
-(`-Xmx=8g`) and to use a CPU with at least 4 cores.
+To run the ORT binaries (also see [Installation from binaries](#from-binaries)) at least Java 11 is required. Memory and
+CPU requirements vary depending on the size and type of project(s) to analyze / scan, but the general recommendation is
+to configure Java with 8 GiB of memory (`-Xmx=8g`) and to use a CPU with at least 4 cores.
 
 If ORT requires external tools in order to analyze a project, these tools are listed by the `ort requirements` command.
 If a package manager is not list listed there, support for it is integrated directly into ORT and does not require any

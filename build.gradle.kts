@@ -45,17 +45,39 @@ val okhttpVersion: String by project
 plugins {
     kotlin("jvm")
 
-    id("io.gitlab.arturbosch.detekt")
-    id("org.jetbrains.dokka")
-
     id("com.github.ben-manes.versions")
-    id("org.ajoberstar.reckon")
+    id("io.gitlab.arturbosch.detekt")
+    id("org.barfuin.gradle.taskinfo")
+    id("org.jetbrains.dokka")
     id("org.jetbrains.gradle.plugin.idea-ext")
 }
 
-reckon {
-    scopeFromProp()
-    snapshotFromProp()
+buildscript {
+    dependencies {
+        // For some reason "jgitVersion" needs to be declared here instead of globally.
+        val jgitVersion: String by project
+        classpath("org.eclipse.jgit:org.eclipse.jgit:$jgitVersion")
+    }
+}
+
+if (version == Project.DEFAULT_VERSION) {
+    version = org.eclipse.jgit.api.Git.open(rootDir).use { git ->
+        // Make the output to exactly match "git describe --abbrev=7 --always --tags --dirty".
+        val description = git.describe().setAlways(true).setTags(true).call()
+        val isDirty = git.status().call().hasUncommittedChanges()
+
+        if (isDirty) "$description-dirty" else description
+    }
+}
+
+logger.quiet("Building ORT version $version.")
+
+// TODO: Replace this with Gradle's toolchain mechanism [1] once the Kotlin plugin supports it [2].
+// [1] https://blog.gradle.org/java-toolchains
+// [2] https://youtrack.jetbrains.com/issue/KT-43095
+val javaVersion = JavaVersion.current()
+if (!javaVersion.isCompatibleWith(JavaVersion.VERSION_11)) {
+    throw GradleException("At least Java 11 is required, but Java $javaVersion is being used.")
 }
 
 idea {
@@ -132,7 +154,7 @@ allprojects {
             "src/funTest/kotlin")
     }
 
-    tasks.withType<Detekt> {
+    tasks.withType<Detekt>().configureEach {
         dependsOn(":detekt-rules:assemble")
     }
 }
@@ -195,11 +217,15 @@ subprojects {
     }
 
     tasks.withType<KotlinCompile>().configureEach {
-        val customCompilerArgs = listOf("-Xallow-result-return-type", "-Xopt-in=kotlin.time.ExperimentalTime")
+        val customCompilerArgs = listOf(
+            "-Xallow-result-return-type",
+            "-Xopt-in=kotlin.io.path.ExperimentalPathApi",
+            "-Xopt-in=kotlin.time.ExperimentalTime"
+        )
 
         kotlinOptions {
             allWarningsAsErrors = true
-            jvmTarget = "1.8"
+            jvmTarget = "11"
             apiVersion = "1.4"
             freeCompilerArgs = freeCompilerArgs + customCompilerArgs
         }
@@ -208,7 +234,7 @@ subprojects {
     tasks.dokkaHtml.configure {
         dokkaSourceSets {
             configureEach {
-                jdkVersion.set(8)
+                jdkVersion.set(11)
 
                 externalDocumentationLink {
                     val baseUrl = "https://codehaus-plexus.github.io/plexus-containers/plexus-container-default/apidocs"

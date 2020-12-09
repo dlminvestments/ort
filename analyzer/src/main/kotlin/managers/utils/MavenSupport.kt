@@ -321,18 +321,24 @@ class MavenSupport(workspaceReader: WorkspaceReader) {
         } catch (e: ProjectBuildingException) {
             e.showStackTrace()
 
-            val failedProject = e.results?.find { projectBuildingResult ->
+            val resultForPomFile = e.results?.find { projectBuildingResult ->
                 projectBuildingResult.pomFile == pomFile
             }
 
-            if (failedProject != null) {
+            if (resultForPomFile != null) {
                 log.warn {
-                    "There was an error building '${pomFile.invariantSeparatorsPath}', continuing with the " +
-                            "incompletely built project: ${e.collectMessagesAsString()}"
+                    "There was an error building project '${e.projectId}' at '${e.pomFile.invariantSeparatorsPath}'. " +
+                            "Still continuing with the incompletely built project '${resultForPomFile.projectId}' at " +
+                            "'${resultForPomFile.pomFile.invariantSeparatorsPath}': ${e.collectMessagesAsString()}"
                 }
-                failedProject
+
+                resultForPomFile
             } else {
-                log.error { "Failed to build '${pomFile.invariantSeparatorsPath}': ${e.collectMessagesAsString()}" }
+                log.error {
+                    "Failed to build project '${e.projectId}' at '${e.pomFile.invariantSeparatorsPath}': " +
+                            e.collectMessagesAsString()
+                }
+
                 throw e
             }
         }

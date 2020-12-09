@@ -23,14 +23,19 @@ import io.kotest.assertions.throwables.shouldNotThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNot
 import io.kotest.matchers.string.shouldContain
 
 import java.io.File
 import java.io.IOException
 import java.time.Instant
+
+import kotlin.io.path.createTempDirectory
 
 import org.ossreviewtoolkit.evaluator.Evaluator
 import org.ossreviewtoolkit.model.OrtIssue
@@ -40,12 +45,13 @@ import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.config.Resolutions
-import org.ossreviewtoolkit.model.licenses.LicenseConfiguration
+import org.ossreviewtoolkit.model.licenses.LicenseClassifications
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.model.utils.createLicenseInfoResolver
 import org.ossreviewtoolkit.reporter.HowToFixTextProvider
 import org.ossreviewtoolkit.reporter.ReporterInput
-import org.ossreviewtoolkit.reporter.reporters.AntennaAttributionDocumentReporter
+import org.ossreviewtoolkit.reporter.reporters.AsciiDocTemplateReporter
+import org.ossreviewtoolkit.spdx.toSpdx
 import org.ossreviewtoolkit.utils.ORT_NAME
 import org.ossreviewtoolkit.utils.ORT_REPO_CONFIG_FILENAME
 
@@ -86,9 +92,16 @@ class ExamplesFunTest : StringSpec() {
             }
         }
 
-        "licenses.yml can be deserialized" {
+        "license-classifications.yml can be deserialized" {
             shouldNotThrow<IOException> {
-                takeExampleFile("licenses.yml").readValue<LicenseConfiguration>()
+                val classifications =
+                    takeExampleFile("license-classifications.yml").readValue<LicenseClassifications>()
+
+                classifications.categories.filter { it.description.isNotEmpty() } shouldNot beEmpty()
+                classifications.categoryNames shouldContain "public-domain"
+                val licMIT = classifications["MIT".toSpdx()]
+                licMIT.shouldNotBeNull()
+                licMIT.categories shouldContain "permissive"
             }
         }
 
@@ -113,37 +126,39 @@ class ExamplesFunTest : StringSpec() {
             howToFixText shouldContain "Manually verify that the file does not contain any license information."
         }
 
-        "rules.kts can be compiled" {
+        "rules.kts can be compiled and executed" {
+            val resultFile = File("src/funTest/assets/semver4j-analyzer-result.yml")
+            val licenseFile = File("../examples/license-classifications.yml")
+            val ortResult = resultFile.readValue<OrtResult>()
             val evaluator = Evaluator(
-                ortResult = OrtResult.EMPTY,
-                licenseInfoResolver = OrtResult.EMPTY.createLicenseInfoResolver(),
-                licenseConfiguration = LicenseConfiguration()
+                ortResult = ortResult,
+                licenseInfoResolver = ortResult.createLicenseInfoResolver(),
+                licenseClassifications = licenseFile.readValue()
             )
 
             val script = takeExampleFile("rules.kts").readText()
 
-            evaluator.checkSyntax(script) shouldBe true
+            val result = evaluator.run(script)
 
-            // TODO: It should also be verified that the script works as expected.
+            result.violations shouldHaveSize 2
+            val failedRules = result.violations.map { it.rule }
+            failedRules shouldContainExactlyInAnyOrder listOf("UNHANDLED_LICENSE", "COPYLEFT_LIMITED_IN_SOURCE")
         }
 
-        "PDF files are valid Antenna templates" {
-            val outputDir = createTempDir(
-                ORT_NAME, ExamplesFunTest::class.simpleName
-            ).apply { deleteOnExit() }
+        "asciidoctor-pdf-theme.yml is a valid asciidoctor-pdf theme" {
+            val outputDir = createTempDirectory("$ORT_NAME-${ExamplesFunTest::class.simpleName}").toFile().apply {
+                deleteOnExit()
+            }
 
-            takeExampleFile("back.pdf")
-            takeExampleFile("content.pdf")
-            takeExampleFile("copyright.pdf")
-            takeExampleFile("cover.pdf")
+            takeExampleFile("asciidoctor-pdf-theme.yml")
 
-            val report = AntennaAttributionDocumentReporter().generateReport(
+            val report = AsciiDocTemplateReporter().generateReport(
                 ReporterInput(OrtResult.EMPTY),
                 outputDir,
-                mapOf("template.path" to examplesDir.resolve("AntennaAttributionDocumentReporter").path)
+                mapOf("pdf-theme.path" to examplesDir.resolve("asciidoctor-pdf-theme.yml").path)
             )
 
-            report should beEmpty()
+            report shouldHaveSize 1
         }
 
         "All example files should have been tested" {

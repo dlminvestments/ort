@@ -45,7 +45,7 @@ class Askalono(name: String, config: ScannerConfiguration) : LocalScanner(name, 
         override fun create(config: ScannerConfiguration) = Askalono(scannerName, config)
     }
 
-    override val scannerVersion = "0.4.3"
+    override val expectedVersion = "0.4.3"
     override val resultFileExt = "txt"
 
     override fun command(workingDir: File?) =
@@ -76,7 +76,7 @@ class Askalono(name: String, config: ScannerConfiguration) : LocalScanner(name, 
                 stdoutFile.copyTo(resultsFile)
                 val result = getRawResult(resultsFile)
                 val summary = generateSummary(startTime, endTime, path, result)
-                return ScanResult(Provenance(), getDetails(), summary, result)
+                return ScanResult(Provenance(), getDetails(), summary)
             } else {
                 throw ScanException(errorMessage)
             }

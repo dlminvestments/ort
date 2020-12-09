@@ -17,7 +17,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # License-Filename: LICENSE
 
-FROM frolvlad/alpine-java:jdk8-slim AS build
+FROM adoptopenjdk/openjdk11:jdk-11.0.9_11.1-alpine-slim AS build
+
+ARG ORT_VERSION="DOCKER-SNAPSHOT"
 
 # Apk install commands.
 RUN apk add --no-cache \
@@ -37,7 +39,7 @@ RUN --mount=type=cache,target=/root/.gradle/ \
     scripts/import_proxy_certs.sh && \
     scripts/set_gradle_proxy.sh && \
     sed -i -r 's,(^distributionUrl=)(.+)-all\.zip$,\1\2-bin.zip,' gradle/wrapper/gradle-wrapper.properties && \
-    ./gradlew --no-daemon --stacktrace :cli:distTar
+    ./gradlew --no-daemon --stacktrace -Pversion=$ORT_VERSION :cli:distTar :helper-cli:startScripts
 
 FROM adoptopenjdk:11-jre-hotspot-bionic
 
@@ -58,7 +60,7 @@ ENV \
     SBT_VERSION=1.3.8 \
     YARN_VERSION=1.22.4 \
     # SDK versions.
-    ANDROID_SDK_VERSION=6609375 \
+    ANDROID_SDK_VERSION=6858069 \
     # Scanner versions.
     SCANCODE_VERSION=3.2.1rc2 \
     # Installation directories.
@@ -144,7 +146,7 @@ RUN /opt/ort/bin/import_proxy_certs.sh && \
         # While sdkmanager uses HTTPS by default, the proxy type is still called "http".
         SDK_MANAGER_PROXY_OPTIONS="--proxy=http --proxy_host=${PROXY_HOST_AND_PORT%:*} --proxy_port=${PROXY_HOST_AND_PORT##*:}"; \
     fi && \
-    yes | $ANDROID_HOME/tools/bin/sdkmanager $SDK_MANAGER_PROXY_OPTIONS --sdk_root=$ANDROID_HOME "platform-tools" && \
+    yes | $ANDROID_HOME/cmdline-tools/bin/sdkmanager $SDK_MANAGER_PROXY_OPTIONS --sdk_root=$ANDROID_HOME "platform-tools" && \
     # Add scanners (in versions known to work).
     curl -ksSL https://github.com/nexB/scancode-toolkit/archive/v$SCANCODE_VERSION.tar.gz | \
         tar -zxC /usr/local && \
@@ -158,5 +160,8 @@ COPY --from=build /usr/local/src/ort/cli/build/distributions/ort-*.tar /opt/ort.
 RUN tar xf /opt/ort.tar -C /opt/ort --strip-components 1 && \
     rm /opt/ort.tar && \
     /opt/ort/bin/ort requirements
+
+COPY --from=build /usr/local/src/ort/helper-cli/build/scripts/orth /opt/ort/bin/
+COPY --from=build /usr/local/src/ort/helper-cli/build/libs/helper-cli-*.jar /opt/ort/lib/
 
 ENTRYPOINT ["/opt/ort/bin/ort"]

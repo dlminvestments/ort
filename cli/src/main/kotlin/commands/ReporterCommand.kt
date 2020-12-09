@@ -45,7 +45,7 @@ import org.ossreviewtoolkit.model.config.CopyrightGarbage
 import org.ossreviewtoolkit.model.config.Resolutions
 import org.ossreviewtoolkit.model.config.orEmpty
 import org.ossreviewtoolkit.model.licenses.DefaultLicenseInfoProvider
-import org.ossreviewtoolkit.model.licenses.LicenseConfiguration
+import org.ossreviewtoolkit.model.licenses.LicenseClassifications
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 import org.ossreviewtoolkit.model.licenses.orEmpty
 import org.ossreviewtoolkit.model.readValue
@@ -57,7 +57,7 @@ import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.utils.ORT_COPYRIGHT_GARBAGE_FILENAME
 import org.ossreviewtoolkit.utils.ORT_CUSTOM_LICENSE_TEXTS_DIRNAME
 import org.ossreviewtoolkit.utils.ORT_HOW_TO_FIX_TEXT_PROVIDER_FILENAME
-import org.ossreviewtoolkit.utils.ORT_LICENSE_CONFIGURATION_FILENAME
+import org.ossreviewtoolkit.utils.ORT_LICENSE_CLASSIFICATIONS_FILENAME
 import org.ossreviewtoolkit.utils.ORT_REPO_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.ORT_RESOLUTIONS_FILENAME
 import org.ossreviewtoolkit.utils.PackageConfigurationOption
@@ -134,13 +134,13 @@ class ReporterCommand : CliktCommand(
         .default(ortConfigDirectory.resolve(ORT_HOW_TO_FIX_TEXT_PROVIDER_FILENAME))
         .configurationGroup()
 
-    private val licenseConfigurationFile by option(
-        "--license-configuration-file",
-        help = "A file containing the license configuration."
+    private val licenseClassificationsFile by option(
+        "--license-classifications-file",
+        help = "A file containing the license classifications."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
-        .default(ortConfigDirectory.resolve(ORT_LICENSE_CONFIGURATION_FILENAME))
+        .default(ortConfigDirectory.resolve(ORT_LICENSE_CLASSIFICATIONS_FILENAME))
         .configurationGroup()
 
     private val packageConfigurationOption by mutuallyExclusiveOptions(
@@ -159,7 +159,7 @@ class ReporterCommand : CliktCommand(
         ).convert { it.expandTilde() }
             .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
             .convert { PackageConfigurationOption.File(it.absoluteFile.normalize()) },
-        name = OPTION_GROUP_CONFIGURATION,
+        name = OPTION_GROUP_CONFIGURATION
     ).single()
 
     private val repositoryConfigurationFile by option(
@@ -222,8 +222,8 @@ class ReporterCommand : CliktCommand(
             archiver = globalOptionsForSubcommands.config.scanner?.archive?.createFileArchiver() ?: FileArchiver.DEFAULT
         )
 
-        val licenseConfiguration =
-            licenseConfigurationFile.takeIf { it.isFile }?.readValue<LicenseConfiguration>().orEmpty()
+        val licenseClassifications =
+            licenseClassificationsFile.takeIf { it.isFile }?.readValue<LicenseClassifications>().orEmpty()
 
         val howToFixTextProvider = howToFixTextProviderScript.takeIf { it.isFile }?.let {
             HowToFixTextProvider.fromKotlinScript(it.readText(), ortResult)
@@ -239,7 +239,7 @@ class ReporterCommand : CliktCommand(
             DefaultLicenseTextProvider(customLicenseTextsDir.takeIf { it.isDirectory }),
             copyrightGarbage,
             licenseInfoResolver,
-            licenseConfiguration,
+            licenseClassifications,
             howToFixTextProvider
         )
 

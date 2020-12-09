@@ -50,14 +50,14 @@ import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
 import org.ossreviewtoolkit.model.config.orEmpty
 import org.ossreviewtoolkit.model.licenses.DefaultLicenseInfoProvider
-import org.ossreviewtoolkit.model.licenses.LicenseConfiguration
+import org.ossreviewtoolkit.model.licenses.LicenseClassifications
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 import org.ossreviewtoolkit.model.licenses.orEmpty
 import org.ossreviewtoolkit.model.mapper
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.model.utils.mergeLabels
 import org.ossreviewtoolkit.utils.ORT_COPYRIGHT_GARBAGE_FILENAME
-import org.ossreviewtoolkit.utils.ORT_LICENSE_CONFIGURATION_FILENAME
+import org.ossreviewtoolkit.utils.ORT_LICENSE_CLASSIFICATIONS_FILENAME
 import org.ossreviewtoolkit.utils.ORT_REPO_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.PackageConfigurationOption
 import org.ossreviewtoolkit.utils.createProvider
@@ -117,14 +117,13 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate rules 
         .default(ortConfigDirectory.resolve(ORT_COPYRIGHT_GARBAGE_FILENAME))
         .configurationGroup()
 
-    private val licenseConfigurationFile by option(
-        "--license-configuration-file",
-        help = "A file containing the license configuration. That license configuration is passed as parameter to " +
-                "the rules script."
+    private val licenseClassificationsFile by option(
+        "--license-classifications-file",
+        help = "A file containing the license classificationsm which are passed as parameter to the rules script."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
-        .default(ortConfigDirectory.resolve(ORT_LICENSE_CONFIGURATION_FILENAME))
+        .default(ortConfigDirectory.resolve(ORT_LICENSE_CLASSIFICATIONS_FILENAME))
         .configurationGroup()
 
     private val packageConfigurationOption by mutuallyExclusiveOptions(
@@ -178,6 +177,15 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate rules 
     private val globalOptionsForSubcommands by requireObject<GlobalOptions>()
 
     override fun run() {
+        val configurationFiles = listOfNotNull(
+                copyrightGarbageFile,
+                licenseClassificationsFile,
+                packageCurationsFile,
+                repositoryConfigurationFile
+        ).map { it.absolutePath }
+        println("The following configuration files are used:")
+        println("\t" + configurationFiles.joinToString("\n\t"))
+
         // Fail early if output files exist and must not be overwritten.
         val outputFiles = mutableSetOf<File>()
 
@@ -252,11 +260,13 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate rules 
             archiver = globalOptionsForSubcommands.config.scanner?.archive?.createFileArchiver() ?: FileArchiver.DEFAULT
         )
 
-        val licenseConfiguration =
-            licenseConfigurationFile.takeIf { it.isFile }?.readValue<LicenseConfiguration>().orEmpty()
-        val evaluator = Evaluator(finalOrtResult, licenseInfoResolver, licenseConfiguration)
+        val licenseClassifications =
+            licenseClassificationsFile.takeIf { it.isFile }?.readValue<LicenseClassifications>().orEmpty()
+        val evaluator = Evaluator(finalOrtResult, licenseInfoResolver, licenseClassifications)
 
-        val evaluatorRun by lazy { evaluator.run(script) }
+        val (evaluatorRun, duration) = measureTimedValue { evaluator.run(script) }
+
+        log.perf { "Executed the evaluator in ${duration.inMilliseconds}ms." }
 
         if (log.delegate.isErrorEnabled) {
             evaluatorRun.violations.forEach { violation ->

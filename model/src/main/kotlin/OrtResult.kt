@@ -59,6 +59,12 @@ data class OrtResult(
     val scanner: ScannerRun? = null,
 
     /**
+     * An [AdvisorRun] containing details about the advisor that was run using the result from [analyzer] as input.
+     * Can be null if no advisor was run.
+     */
+    val advisor: AdvisorRun? = null,
+
+    /**
      * An [EvaluatorRun] containing details about the evaluation that was run using the result from [scanner] as
      * input. Can be null if no evaluation was run.
      */
@@ -80,6 +86,7 @@ data class OrtResult(
             repository = Repository.EMPTY,
             analyzer = null,
             scanner = null,
+            advisor = null,
             evaluator = null,
             labels = emptyMap()
         )
@@ -140,6 +147,10 @@ data class OrtResult(
         scanner?.results?.scanResults?.associateBy({ it.id }, { it.results }).orEmpty()
     }
 
+    private val advisorResultsById: Map<Identifier, List<AdvisorResult>> by lazy {
+        advisor?.results?.advisorResults?.associateBy({ it.id }, { it.results }).orEmpty()
+    }
+
     /**
      * Return the dependencies of the given [id] (which can refer to a [Project] or a [Package]), up to and including a
      * depth of [maxLevel] where counting starts at 0 (for the [Project] or [Package] itself) and 1 are direct
@@ -167,7 +178,12 @@ data class OrtResult(
     fun collectIssues(): Map<Identifier, Set<OrtIssue>> {
         val analyzerIssues = analyzer?.result?.collectIssues().orEmpty()
         val scannerIssues = scanner?.results?.collectIssues().orEmpty()
-        return analyzerIssues.zipWithDefault(scannerIssues, emptySet()) { left, right -> left + right }
+        val advisorIssues = advisor?.results?.collectIssues().orEmpty()
+
+        val analyzerAndScannerIssues =
+            analyzerIssues.zipWithDefault(scannerIssues, emptySet()) { left, right -> left + right }
+
+        return analyzerAndScannerIssues.zipWithDefault(advisorIssues, emptySet()) { left, right -> left + right }
     }
 
     /**
@@ -349,6 +365,16 @@ data class OrtResult(
     fun getProjects(omitExcluded: Boolean = false): Set<Project> =
         analyzer?.result?.projects.orEmpty().filterTo(mutableSetOf()) { project ->
             !omitExcluded || !isExcluded(project.id)
+        }
+
+    /**
+     * Return all [AdvisorResultContainer]s contained in this [OrtResult] or only the non-excluded ones if
+     * [omitExcluded] is true.
+     */
+    @JsonIgnore
+    fun getAdvisorResultContainers(omitExcluded: Boolean = false): Set<AdvisorResultContainer> =
+        advisor?.results?.advisorResults.orEmpty().filterTo(mutableSetOf()) { result ->
+            !omitExcluded || !isExcluded(result.id)
         }
 
     /**

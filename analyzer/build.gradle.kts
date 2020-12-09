@@ -45,10 +45,11 @@ repositories {
 }
 
 dependencies {
+    api(project(":clients:clearly-defined"))
     api(project(":model"))
-    api(project(":clearly-defined"))
 
     implementation(project(":downloader"))
+    implementation(project(":spdx-utils"))
     implementation(project(":utils"))
 
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")

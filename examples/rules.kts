@@ -26,18 +26,19 @@
  *******************************************************/
 
 /**
- * Import license configuration from licenses.yml.
+ * Import the license classifications from license-classifications.yml.
  */
 
-fun getLicenseSet(setId: String) = licenseConfiguration.getLicensesForSet(setId).map { it.id }.toSet()
+fun getLicenseCategory(categoryId: String) =
+    licenseClassifications.getLicensesForCategory(categoryId).map { it.id }.toSet()
 
-val permissiveLicenses = getLicenseSet("permissive")
+val permissiveLicenses = getLicenseCategory("permissive")
 
-val copyleftLicenses = getLicenseSet("copyleft")
+val copyleftLicenses = getLicenseCategory("copyleft")
 
-val copyleftLimitedLicenses = getLicenseSet("copyleft-limited")
+val copyleftLimitedLicenses = getLicenseCategory("copyleft-limited")
 
-val publicDomainLicenses = getLicenseSet("public-domain")
+val publicDomainLicenses = getLicenseCategory("public-domain")
 
 // The complete set of licenses covered by policy rules.
 val handledLicenses = listOf(

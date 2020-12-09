@@ -42,9 +42,10 @@ import org.ossreviewtoolkit.model.licenses.ResolvedLicenseInfo
 import org.ossreviewtoolkit.reporter.Reporter
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.spdx.SpdxLicense
+import org.ossreviewtoolkit.utils.ORT_NAME
 import org.ossreviewtoolkit.utils.isTrue
 
-private const val REPORT_BASE_FILENAME = "bom"
+private const val REPORT_BASE_FILENAME = "CycloneDX-BOM"
 private const val REPORT_EXTENSION = "xml"
 
 /**
@@ -87,7 +88,7 @@ class CycloneDxReporter : Reporter {
                         text = input.licenseTextProvider.getLicenseText(licenseName)
                     }
                 )
-                extensibleTypes = listOf(ExtensibleType("ort", "origin", origin))
+                extensibleTypes = listOf(ExtensibleType(ORT_NAME, "origin", origin))
             }
         }
 
@@ -101,7 +102,7 @@ class CycloneDxReporter : Reporter {
         val createSingleBom = options["single.bom"].isTrue()
 
         if (createSingleBom && projects.size > 1) {
-            val reportFilename = "bom.xml"
+            val reportFilename = "$REPORT_BASE_FILENAME.$REPORT_EXTENSION"
             val outputFile = outputDir.resolve(reportFilename)
 
             val bom = Bom().apply { serialNumber = "urn:uuid:${UUID.randomUUID()}" }
@@ -149,7 +150,7 @@ class CycloneDxReporter : Reporter {
 
                 bom.addExternalReference(ExternalReference.Type.WEBSITE, project.homepageUrl)
 
-                val licenseNames = input.licenseInfoResolver.resolveLicenseInfo(project.id)
+                val licenseNames = input.licenseInfoResolver.resolveLicenseInfo(project.id).filterExcluded()
                     .getLicenseNames(LicenseSource.DECLARED, LicenseSource.DETECTED)
 
                 bom.addExternalReference(ExternalReference.Type.LICENSE, licenseNames.joinToString(", "))
@@ -182,12 +183,13 @@ class CycloneDxReporter : Reporter {
     }
 
     private fun addPackageToBom(input: ReporterInput, pkg: Package, bom: Bom, dependencyType: String) {
-        val resolvedLicenseInfo = input.licenseInfoResolver.resolveLicenseInfo(pkg.id)
+        val resolvedLicenseInfo = input.licenseInfoResolver.resolveLicenseInfo(pkg.id).filterExcluded()
 
         val concludedLicenseNames = resolvedLicenseInfo.getLicenseNames(LicenseSource.CONCLUDED)
         val declaredLicenseNames = resolvedLicenseInfo.getLicenseNames(LicenseSource.DECLARED)
         val detectedLicenseNames = resolvedLicenseInfo.getLicenseNames(LicenseSource.DETECTED)
 
+        // Get all licenses, but note down their origins inside of an extensible type.
         val licenseObjects = mapLicenseNamesToObjects(concludedLicenseNames, "concluded license", input) +
                 mapLicenseNamesToObjects(declaredLicenseNames, "declared license", input) +
                 mapLicenseNamesToObjects(detectedLicenseNames, "detected license", input)
@@ -219,12 +221,18 @@ class CycloneDxReporter : Reporter {
             // TODO: Support license expressions once we have fully converted to them.
             licenseChoice = LicenseChoice().apply { licenses = licenseObjects }
 
+            // TODO: Find a way to associate copyrights to the license they belong to, see
+            //       https://github.com/CycloneDX/cyclonedx-core-java/issues/58
+            copyright = resolvedLicenseInfo.flatMap { it.getCopyrights(process = true) }.joinToString()
+                .takeUnless { it.isEmpty() }
+
             purl = pkg.purl + purlQualifier
+            isModified = pkg.isModified
 
             // See https://github.com/CycloneDX/specification/issues/17 for how this differs from FRAMEWORK.
             type = Component.Type.LIBRARY
 
-            extensibleTypes = listOf(ExtensibleType("ort", "dependencyType", dependencyType))
+            extensibleTypes = listOf(ExtensibleType(ORT_NAME, "dependencyType", dependencyType))
         }
 
         bom.addComponent(component)
