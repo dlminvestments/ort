@@ -2,31 +2,29 @@
 
 &nbsp;
 
-| Linux (OpenJDK 11)             | Windows (Oracle JDK 11)         | JitPack (OpenJDK 11)            |
-| :----------------------------- | :------------------------------ | :------------------------------ |
-| [![Linux build status][1]][2]  | [![Windows build status][3]][4] | [![JitPack build status][5]][6] |
-| [![Linux code coverage][7]][8] |                                 |                                 |
+| Linux + Windows (OpenJDK 11)   | JitPack (OpenJDK 11)            |
+| :----------------------------- | :------------------------------ |
+| [![Build status][1]][2]        | [![JitPack build status][3]][4] |
+| [![Linux code coverage][5]][6] |                                 |
 
 | License status           | Code quality      | TODOs              | Interact with us!              |
 | :----------------------- | :---------------- | :----------------- | :----------------------------- |
-| [![REUSE status][9]][10] | [![LGTM][11]][12] | [![TODOs][13]][14] | [![ort-talk][15]][16]          |
+| [![REUSE status][7]][8] | [![LGTM][9]][10] | [![TODOs][11]][12] | [![ort-talk][13]][14]          |
 
-[1]: https://travis-ci.com/oss-review-toolkit/ort.svg?branch=master
-[2]: https://travis-ci.com/oss-review-toolkit/ort
-[3]: https://ci.appveyor.com/api/projects/status/8oh5ld40c8h19jr5/branch/master?svg=true
-[4]: https://ci.appveyor.com/project/oss-review-toolkit/ort/branch/master
-[5]: https://jitpack.io/v/oss-review-toolkit/ort.svg
-[6]: https://jitpack.io/#oss-review-toolkit/ort
-[7]: https://codecov.io/gh/oss-review-toolkit/ort/branch/master/graph/badge.svg
-[8]: https://codecov.io/gh/oss-review-toolkit/ort/
-[9]: https://api.reuse.software/badge/github.com/oss-review-toolkit/ort
-[10]: https://api.reuse.software/info/github.com/oss-review-toolkit/ort
-[11]: https://img.shields.io/lgtm/alerts/g/oss-review-toolkit/ort.svg?logo=lgtm&logoWidth=18
-[12]: https://lgtm.com/projects/g/oss-review-toolkit/ort/alerts/
-[13]: https://badgen.net/https/api.tickgit.com/badgen/github.com/oss-review-toolkit/ort
-[14]: https://www.tickgit.com/browse?repo=github.com/oss-review-toolkit/ort
-[15]: https://img.shields.io/badge/slack-ort--talk-blue.svg?longCache=true&logo=slack
-[16]: https://join.slack.com/t/ort-talk/shared_invite/enQtMzk3MDU5Njk0Njc1LThiNmJmMjc5YWUxZTU4OGI5NmY3YTFlZWM5YTliZmY5ODc0MGMyOWIwYmRiZWFmNGMzOWY2NzVhYTI0NTJkNmY
+[1]: https://dev.azure.com/oss-review-toolkit/ort/_apis/build/status/oss-review-toolkit.ort?branchName=master
+[2]: https://dev.azure.com/oss-review-toolkit/ort/_build/latest?definitionId=2&branchName=master
+[3]: https://jitpack.io/v/oss-review-toolkit/ort.svg
+[4]: https://jitpack.io/#oss-review-toolkit/ort
+[5]: https://codecov.io/gh/oss-review-toolkit/ort/branch/master/graph/badge.svg
+[6]: https://codecov.io/gh/oss-review-toolkit/ort/
+[7]: https://api.reuse.software/badge/github.com/oss-review-toolkit/ort
+[8]: https://api.reuse.software/info/github.com/oss-review-toolkit/ort
+[9]: https://img.shields.io/lgtm/alerts/g/oss-review-toolkit/ort.svg?logo=lgtm&logoWidth=18
+[10]: https://lgtm.com/projects/g/oss-review-toolkit/ort/alerts/
+[11]: https://badgen.net/https/api.tickgit.com/badgen/github.com/oss-review-toolkit/ort
+[12]: https://www.tickgit.com/browse?repo=github.com/oss-review-toolkit/ort
+[13]: https://img.shields.io/badge/slack-ort--talk-blue.svg?longCache=true&logo=slack
+[14]: https://join.slack.com/t/ort-talk/shared_invite/enQtMzk3MDU5Njk0Njc1LThiNmJmMjc5YWUxZTU4OGI5NmY3YTFlZWM5YTliZmY5ODc0MGMyOWIwYmRiZWFmNGMzOWY2NzVhYTI0NTJkNmY
 
 # Introduction
 
