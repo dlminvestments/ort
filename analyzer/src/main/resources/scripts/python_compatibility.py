@@ -45,13 +45,13 @@ def project_compatibility(path):
                 file_content = open(file_path).read()
                 if not compatible_python3(file_content):
                     logging.debug("At least one file is incompatible with Python 3: ", file_path)
-                    logging.debug("Assuming the project in '" + path, "' to be Python 2.")
+                    logging.debug("Assuming the project in '", path, "' to be Python 2.")
                     return 2
 
-    logging.debug("The project in '" + path, "' seems to be compatible with Python 3.")
+    logging.debug("The project in '", path, "' seems to be compatible with Python 3.")
     return 3
 
 if __name__ == "__main__":
     dir_path = args.directory
-    logging.debug("Trying to determine the required Python version for the project in '" + dir_path, "'.")
+    logging.debug("Trying to determine the required Python version for the project in '", dir_path, "'.")
     print(project_compatibility(dir_path), end = "")
